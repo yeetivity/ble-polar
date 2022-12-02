@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">ble-polar</string>
+    <string name="start_scan">Start scan</string>
+    <string name="no_devices_found">No devices found</string>
+    <string name="connected">Connected</string>
+    <string name="disconnected">Disconnected</string>
+    <string name="no_data">No data</string>
+    <string name="service_not_found">Service not found</string>
+    <string name="notifications_enabled">Notifications enabled</string>
+    <string name="ble_scan_stopped">BLE scan stopped</string>
+</resources>
