@@ -132,11 +132,15 @@ public class DeviceActivity extends AppCompatActivity {
                     // Write a command, as a byte array, to the control characteristic
                     // Callback: onCharacteristicWrite
                     BluetoothGattCharacteristic controlCharacteristic = polarService.getCharacteristic(POLAR_CONTROL);
-
-                    // Try to open an acceleration stream
                     controlCharacteristic.setValue(ACC_STREAM_REQUEST);
                     boolean wasSuccess = mBluetoothGatt.writeCharacteristic(controlCharacteristic);
                     Log.i("writeCharacteristic", "was success=" + wasSuccess);
+
+                    // Read from the controlCharacteristic -> Callback: onCharacteristicRead
+                    // If code is okay -> startNotifications for data characteristic
+                    // gatt.readCharacteristic(controlCharacteristic);
+
+
                 } else {
                     mHandler.post(() -> MsgUtils.createDialog("Alert!",
                                     getString(R.string.service_not_found),
@@ -151,27 +155,39 @@ public class DeviceActivity extends AppCompatActivity {
                 characteristic, int status) {
             Log.i(LOG_TAG, "onCharacteristicWrite " + characteristic.getUuid().toString());
 
+            if (characteristic.getUuid().equals(POLAR_CONTROL)){
+                // Response from polar control
+
+                // Callback -> onCharacteristicsRead
+                gatt.readCharacteristic(characteristic);
+
+            } else {
+                // response from data
+                Log.i(LOG_TAG, "onCharacteristicWrite: unexpected Uuid");
+            }
+
             // Enable notifications on data from the sensor. First: Enable receiving
             // notifications on the client side, i.e. on this Android device.
-            BluetoothGattService polarService = gatt.getService(POLAR_SERVICE);
-            BluetoothGattCharacteristic dataCharacteristic =
-                    polarService.getCharacteristic(POLAR_DATA);
+//            BluetoothGattService polarService = gatt.getService(POLAR_SERVICE);
+//            BluetoothGattCharacteristic dataCharacteristic =
+//                    polarService.getCharacteristic(POLAR_DATA);
             // second arg: true, notification; false, indication
-            boolean success = gatt.setCharacteristicNotification(dataCharacteristic, true);
-            if (success) {
-                Log.i(LOG_TAG, "setCharactNotification success");
-                // Todo: ! WE GET HERE.
-                // I don't think we need a descriptor with the polar sensor.
-
-//                // Second: set enable notification server side (sensor). Why isn't
-//                // this done by setCharacteristicNotification - a flaw in the API?
-//                BluetoothGattDescriptor descriptor =
-//                        dataCharacteristic.getDescriptor(CLIENT_CHARACTERISTIC_CONFIG);
-//                descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-//                gatt.writeDescriptor(descriptor); // callback: onDescriptorWrite
-            } else {
-                Log.i(LOG_TAG, "setCharacteristicNotification failed");
-            }
+//            boolean success = gatt.setCharacteristicNotification(dataCharacteristic, true);
+//            if (success) {
+//                Log.i(LOG_TAG, "setCharactNotification success");
+//
+//                BluetoothGattDescriptor descriptor = dataCharacteristic.getDescriptor(POLAR_CONTROL);
+//                descriptor.setValue(BluetoothGattDescriptor.ENABLE_INDICATION_VALUE);
+//
+////                // Second: set enable notification server side (sensor). Why isn't
+////                // this done by setCharacteristicNotification - a flaw in the API?
+////                BluetoothGattDescriptor descriptor =
+////                        dataCharacteristic.getDescriptor(CLIENT_CHARACTERISTIC_CONFIG);
+////                descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+////                gatt.writeDescriptor(descriptor); // callback: onDescriptorWrite
+//            } else {
+//                Log.i(LOG_TAG, "setCharacteristicNotification failed");
+//            }
         }
 
         @Override
@@ -179,16 +195,6 @@ public class DeviceActivity extends AppCompatActivity {
                 descriptor, int status) {
             //Todo: don't think we need this function with polar
             Log.i(LOG_TAG, "onDescriptorWrite, status " + status);
-
-//            if (CLIENT_CHARACTERISTIC_CONFIG.equals(descriptor.getUuid()))
-//                if (status == BluetoothGatt.GATT_SUCCESS) {
-//                    // if success, we should receive data in onCharacteristicChanged
-//                    mHandler.post(new Runnable() {
-//                        public void run() {
-//                            mDeviceView.setText(R.string.notifications_enabled);
-//                        }
-//                    });
-//                }
         }
 
         /**
@@ -199,37 +205,20 @@ public class DeviceActivity extends AppCompatActivity {
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic
                 characteristic) {
             // debug
-            // Log.i(LOG_TAG, "onCharacteristicChanged " + characteristic.getUuid());
-
-            //Todo: Edit this for what we get from the polar
+            Log.i(LOG_TAG, "onCharacteristicChanged " + characteristic.getUuid());
 
             // if response and id matches
             if (POLAR_DATA.equals(characteristic.getUuid())) {
                 byte[] data = characteristic.getValue();
-                if (data[0] == POLAR_RESPONSE && data[1] == REQUEST_ID) {
-                    // NB! use length of the array to determine the number of values in this
-                    // "packet", the number of values in the packet depends on the frequency set(!)
-                    int len = data.length;
-                    // ...
+                //Todo: parse and interpret the data
 
-                    // parse and interpret the data, ...
-                    int time = TypeConverter.fourBytesToInt(data, 2);
-                    float accX = TypeConverter.fourBytesToFloat(data, 6);
-                    float accY = TypeConverter.fourBytesToFloat(data, 10);
-                    float accZ = TypeConverter.fourBytesToFloat(data, 14);
+                // Todo: do something fun with the data
 
-                    // ... and then, filter data, calculate something interesting,
-                    // ... display a graph or show values, ...
-
-                    String accStr = "" + accX + " " + accY + " " + accZ;
-                    Log.i("acc data", "" + time + " " + accStr);
-
-                    final String viewDataStr = String.format("%.2f, %.2f, %.2f", accX, accY, accZ);
-                    mHandler.post(() -> {
-                        mDeviceView.setText("" + time + " ms");
-                        mDataView.setText(viewDataStr);
-                    });
-                }
+                mHandler.post(() -> {
+                    //Todo: post to views
+                    mDeviceView.setText("" + " ms");
+                    mDataView.setText("");
+                });
             }
         }
 
@@ -237,6 +226,29 @@ public class DeviceActivity extends AppCompatActivity {
         public void onCharacteristicRead(BluetoothGatt gatt, BluetoothGattCharacteristic
                 characteristic, int status) {
             Log.i(LOG_TAG, "onCharacteristicRead " + characteristic.getUuid().toString());
+
+            // Check if error code is succes
+            if (characteristic.getValue()[3] == 0){
+                //Start listening to data characteristic
+
+//                //debugging purposes
+//                BluetoothGattCharacteristic chara = gatt.getService(POLAR_SERVICE).getCharacteristic(POLAR_DATA);
+//                boolean success = gatt.setCharacteristicNotification(chara, true);
+//                //Callback -> onCharacteristicsChanged
+//                //boolean success = gatt.setCharacteristicNotification((gatt.getService(POLAR_SERVICE).getCharacteristic(POLAR_DATA)), true);
+//                if (success){
+//                    Log.i(LOG_TAG, "succesfully set characteristic notification");
+//                }
+
+                gatt.readCharacteristic(gatt.getService(POLAR_SERVICE).getCharacteristic(POLAR_DATA));
+
+            } else {
+                Log.i(LOG_TAG, "no succes response from control point");
+            }
+
+
+
+
         }
     };
 }
